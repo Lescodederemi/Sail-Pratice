@@ -27,7 +27,7 @@ def upload_attachment_with_zone(message, email_num, model, zone, ftp):
     for part in message.mailparts:
         if part.filename:
             filename = part.filename
-            new_filename = f"{filename}"  # Pas de 'Modèle' au début
+            new_filename = renommer_fichier(filename, model)  # Renommage du fichier
             folder_path = f"{model}/{zone}"
 
             try:
@@ -47,6 +47,15 @@ def upload_attachment_with_zone(message, email_num, model, zone, ftp):
                     print(f"❌ Erreur d’envoi FTP pour {new_filename} : {e}")
             else:
                 print(f"⚠️ Aucune donnée dans la pièce jointe : {filename}")
+
+def renommer_fichier(filename, model):
+    """Renomme le fichier en ne gardant que le modèle et la date."""
+    # Extraire la date des 8 premiers caractères après le modèle
+    if model in filename:
+        date_part = filename[len(model):len(model)+8]  # Exemple : "20250415"
+        new_filename = f"{model}{date_part}.grb"  # Nouveau nom de fichier
+        return new_filename
+    return filename  # Si le modèle n'est pas trouvé, on garde le nom initial
 
 # Fonction pour traiter les emails et renommer les pièces jointes
 def traiter_emails():
