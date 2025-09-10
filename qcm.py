@@ -1,5 +1,12 @@
 import mysql.connector
-from config import SQL_host, Sql_User, Sql_mdp, Sql_name
+import os
+
+# Récupérer les variables de base de données
+SQL_host = os.getenv('SQL_HOST')
+Sql_User = os.getenv('SQL_USER')
+Sql_mdp = os.getenv('SQL_PASSWORD')
+Sql_name = os.getenv('SQL_NAME')
+
 
 def connect_db():
     return mysql.connector.connect(
@@ -9,6 +16,12 @@ def connect_db():
         database=Sql_name
     )
 
+# Dans chaque fichier
+import mysql.connector
+from config import DB_CONFIG
+
+def get_connection():
+    return mysql.connector.connect(**DB_CONFIG)
 
 def add_qcm(cours_id: int, ordre: int, question: str, bonne_reponse: int,
             reponse_1: str, reponse_2: str, reponse_3: str,
