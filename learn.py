@@ -1,15 +1,14 @@
-from config import SQL_host, Sql_User, Sql_mdp, Sql_name
+from dotenv import load_dotenv
 import mysql.connector
 from datetime import datetime
+import os
+
+# Dans chaque fichier
+import mysql.connector
+from config import DB_CONFIG
 
 def get_connection():
-    return mysql.connector.connect(
-        host=SQL_host,
-        user=Sql_User,
-        password=Sql_mdp,
-        database=Sql_name
-    )
-
+    return mysql.connector.connect(**DB_CONFIG)
 def ajouter_cours(titre, thematique, niveau):
     connection = get_connection()
     cursor = connection.cursor()
@@ -487,20 +486,20 @@ def is_course_completed(discord_id: int, cours_id: int) -> bool:
         query = """
         SELECT etat
         FROM suivi
-        WHERE discord_id = %s AND cours_id = %s
+        WHERE discord_id = %s AND cours_id = %s AND type_activite = 'qcm'
         ORDER BY date_activite DESC 
         LIMIT 1
         """
         cursor.execute(query, (discord_id, cours_id))
         result = cursor.fetchone()
-        return bool(result[0]) if result else False
+        return result and result[0] == 'termine'
     except Exception as e:
         print(f"Erreur is_course_completed: {e}")
         return False
     finally:
         cursor.close()
         connection.close()
-
+        
 def update_chapitre_media(chapitre_id: int, new_media_id: int) -> bool:
     """Modifie le média associé à un chapitre"""
     connection = get_connection()
