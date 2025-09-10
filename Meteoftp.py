@@ -3,7 +3,19 @@ from ftplib import FTP
 import imapclient
 import pyzmail
 import io  # Utilisation de io pour BytesIO
-from config import EMAIL, PASSWORD, IMAP_SERVER, FTP_host, Ftp_user, FTP_mdp
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement
+load_dotenv()
+
+# Récupérer les variables de base de données
+FTP_host = os.getenv('FTP_host')
+Ftp_user = os.getenv('FTP_user')
+FTP_mdp = os.getenv('FTP_mdp')
+FTP_BASE_DIR = os.getenv('FTP_BASE_DIR')
+EMAIL = os.getenv('EMAIL')
+PASSWORD = os.getenv('PASSWORD')
+IMAP_SERVER = os.getenv('IMAP_SERVER')
 
 def connexion_ftp():
     """Établit une connexion FTP avec les identifiants fournis dans config.py."""
@@ -143,3 +155,4 @@ def traiter_email(email_body, email_num):
 # Appel de la fonction pour traiter les emails
 if __name__ == "__main__":
     traiter_emails()
+
