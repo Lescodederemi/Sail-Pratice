@@ -1,25 +1,36 @@
-from discord import app_commands, SelectOption, ButtonStyle
+from discord import app_commands, ButtonStyle
 import discord
 from discord.ext import commands 
 from discord.ui import Button, View, Select
-from config import DISCORD_TOKEN
 import Users
 import learn
 import exercices
 import qcm
 import aiohttp
 from bs4 import BeautifulSoup
+import os
+from dotenv import load_dotenv
+from Users import create_table
+import asyncio
 
 # Initialisation des intents
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix=".", intents=intents)
 
 # Stockage minimal temporaire (sélections de cours/menus)
 bot.temp_data = {}
 
+
+# Récupérer les variables
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+URL_GRIB = os.getenv('URL_GRIB')
+URL_INTERFACE = os.getenv('URL_INTERFACE')
+
+
 @bot.event
-async def on_ready():
+async def on_ready():  
     await bot.tree.sync()
     print(f"{bot.user} est connecté et synchronisé.")
     
@@ -73,9 +84,15 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # View pour les boutons Zone
-class ZoneView(View):
+class VueGribZone(View):
     def __init__(self):
         super().__init__(timeout=None)
+        # Ajouter le bouton Accueil
+        self.add_item(Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        ))
 
     @discord.ui.button(label="Zone 1", style=discord.ButtonStyle.primary, custom_id="zone1")
     async def zone1_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -84,7 +101,7 @@ class ZoneView(View):
         await interaction.followup.send(embed=discord.Embed(
             title="\U0001F4C8 Choix du modèle",
             description="Sélectionnez un modèle météo :",
-            color=discord.Color.purple()), view=ModeleView())
+            color=discord.Color.purple()), view=VueGribSysteme())
 
     @discord.ui.button(label="Zone 2", style=discord.ButtonStyle.success, custom_id="zone2")
     async def zone2_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -93,7 +110,7 @@ class ZoneView(View):
         await interaction.followup.send(embed=discord.Embed(
             title="\U0001F4C8 Choix du modèle",
             description="Sélectionnez un modèle météo :",
-            color=discord.Color.purple()), view=ModeleView())
+            color=discord.Color.purple()), view=VueGribSysteme())
 
     @discord.ui.button(label="Zone 3", style=discord.ButtonStyle.danger, custom_id="zone3")
     async def zone3_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -102,17 +119,23 @@ class ZoneView(View):
         await interaction.followup.send(embed=discord.Embed(
             title="\U0001F4C8 Choix du modèle",
             description="Sélectionnez un modèle météo :",
-            color=discord.Color.purple()), view=ModeleView())
+            color=discord.Color.purple()), view=VueGribSysteme())
 
 # View pour la sélection du modèle météo
-class ModeleView(View):
+class VueGribSysteme(View):
     def __init__(self):
         super().__init__(timeout=None)
+        # Ajouter le bouton Accueil
+        self.add_item(Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        ))
 
     async def fetch_dates_and_show_menu(self, interaction: discord.Interaction, modele: str):
         bot.temp_data["modele"] = modele
         zone = bot.temp_data.get("zone")
-        base_url = f"http://lesvoilesderemi.yj.lu/Discords-Gribs/{modele}/{zone}/"
+        base_url = f"{URL_GRIB}{modele}/{zone}/"
         dates_set = set()
 
         try:
@@ -134,7 +157,7 @@ class ModeleView(View):
                 sorted_dates = sorted(dates_set, reverse=True)
                 await interaction.response.send_message(
                     embed=discord.Embed(title="📅 Dates disponibles", description="Choisissez une date :", color=discord.Color.blurple()),
-                    view=DateSelectView(sorted_dates)
+                    view=GribDateSelection(sorted_dates)
                 )
             else:
                 await interaction.response.send_message("❌ Aucune date disponible pour ce modèle et cette zone.")
@@ -150,7 +173,7 @@ class ModeleView(View):
     async def gfs_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.fetch_dates_and_show_menu(interaction, "gfs")
 
-class DateSelect(Select):
+class GribDate(Select):
     def __init__(self, dates: list[str]):
         options = [
             discord.SelectOption(label=date, value=date, description=f"Fichier GRIB pour {date}")
@@ -167,7 +190,7 @@ class DateSelect(Select):
         date = self.values[0]
 
         # URL du fichier GRIB
-        file_url = f"http://lesvoilesderemi.yj.lu/Discords-Gribs/{modele}/{zone}/{modele}{date}.grb"
+        file_url = f"{URL_GRIB}{modele}/{zone}/{modele}{date}.grb"
 
         # Création de l'embed
         embed = discord.Embed(
@@ -180,23 +203,42 @@ class DateSelect(Select):
         # Envoi de l'embed
         await interaction.followup.send(embed=embed)
 
-class DateSelectView(View):
+class GribDateSelection(View):
     def __init__(self, dates: list[str]):
         super().__init__(timeout=60)
-        self.add_item(DateSelect(dates))
+        self.add_item(GribDate(dates))
+        # Ajouter le bouton Accueil
+        self.add_item(Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        ))
 
 # Commande Slash pour lancer le bot
 @bot.tree.command()
 async def lvr(interaction: discord.Interaction):
     """Commande slash pour lancer l'application"""
+    # Créer la vue
     view = View()
     view.add_item(Button(label="Météo", style=discord.ButtonStyle.primary, custom_id="meteo"))
     view.add_item(Button(label="Learn", style=discord.ButtonStyle.primary, custom_id="learn"))
-    view.add_item(Button(label="Exercices", style=discord.ButtonStyle.primary, custom_id="exercices")) 
-    await interaction.response.send_message(
-        embed=discord.Embed(title="Bienvenue sur le bot Sail Practice", description="Cliquez sur les options suivantes.", color=discord.Color.blue()),
-        view=view
+    view.add_item(Button(label="Exercices", style=discord.ButtonStyle.primary, custom_id="exercices"))
+    view.add_item(Button(label="IA", style=discord.ButtonStyle.primary, custom_id="IA"))
+    view.add_item(Button(label="Gestion_comptes", style=discord.ButtonStyle.link, url=URL_INTERFACE))
+    
+    # Créer l'embed
+    embed = discord.Embed(
+        title="Bienvenue sur le bot Sail Practice",
+        description="Cliquez sur les options suivantes. Météo= Generer un fichier grib Learn lancer le module elearning" \
+        "Exercices tester ses connaissances via les exercices  Ia = utiliser l'assiatnt ia gestion_compte gerer son compte via la plateforme",
+        color=discord.Color.blue()
     )
+    
+    # Stocker la vue et l'embed dans le bot pour réutilisation
+    bot.main_menu_view = view
+    bot.main_menu_embed = embed
+    
+    await interaction.response.send_message(embed=embed, view=view)
 
 # Gérer les interactions bouton
 @bot.event
@@ -215,6 +257,12 @@ async def on_interaction(interaction):
     elif custom_id == "meteo":
         view = View()
         view.add_item(Button(label="Générer GRIB", style=discord.ButtonStyle.success, custom_id="gribe"))
+        # Ajouter le bouton Accueil
+        view.add_item(Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        ))
         await interaction.response.edit_message(
             embed=discord.Embed(title="\U0001F300 Météo", description="Cliquez sur Générer GRIB pour voir les zones disponibles.", color=discord.Color.green()),
             view=view
@@ -225,8 +273,8 @@ async def on_interaction(interaction):
             description="Choisissez une zone ci-dessous :",
             color=discord.Color.teal()
         )
-        embed_grib.set_image(url="https://lesvoilesderemi.yj.lu/Discords-Gribs/Zone%20grb.jpg")
-        await interaction.response.send_message(embed=embed_grib, view=ZoneView())
+        embed_grib.set_image(url=f"{URL_GRIB}Zone%20grb.jpg")
+        await interaction.response.send_message(embed=embed_grib, view=VueGribZone())
 
     elif custom_id == "learn":
         thematiques = learn.get_all_thematiques()
@@ -237,6 +285,12 @@ async def on_interaction(interaction):
         options = [discord.SelectOption(label=f"Thématique {th}", value=th) for th in thematiques]
         view = View()
         view.add_item(SelectWithOptions(options=options, placeholder="Choisissez une thématique"))
+        # Ajouter le bouton Accueil
+        view.add_item(Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        ))
         await interaction.response.edit_message(view=view)
 
     elif custom_id in ["prev", "next"]:
@@ -267,16 +321,13 @@ async def on_interaction(interaction):
         # Afficher à nouveau le premier QCM
         await show_qcm(interaction)
 
-    elif custom_id == "back_to_menu":
-        view = View()
-        view.add_item(Button(label="Météo", style=discord.ButtonStyle.primary, custom_id="meteo"))
-        view.add_item(Button(label="Learn", style=discord.ButtonStyle.primary, custom_id="learn"))
-        view.add_item(Button(label="Exercices", style=discord.ButtonStyle.primary, custom_id="exercices"))
+    elif custom_id == "accueil":
+        # Réutiliser la vue et l'embed stockés dans le bot
         await interaction.response.edit_message(
-            embed=discord.Embed(title="Bienvenue sur le bot Sail Practice", description="Cliquez sur les options suivantes.", color=discord.Color.blue()),
-            view=view
+            embed=bot.main_menu_embed, 
+            view=bot.main_menu_view
         )
-    
+
     elif custom_id == "exercices":
         cours_list = learn.get_all_cours()
         
@@ -369,11 +420,24 @@ async def on_interaction(interaction):
                         ),
                         color=discord.Color.blue()
                     )
-                    await interaction.response.send_message(embed=embed)
+                    # Ajouter le bouton Accueil à la vue
+                    view = View()
+                    view.add_item(Button(
+                        label="🏠 Accueil",
+                        style=ButtonStyle.primary,
+                        custom_id="accueil"
+                    ))
+                    await interaction.response.send_message(embed=embed, view=view)
                 
                 exercice_select.callback = exercice_select_callback
                 view_exercice = View()
                 view_exercice.add_item(exercice_select)
+                # Ajouter le bouton Accueil
+                view_exercice.add_item(Button(
+                    label="🏠 Accueil",
+                    style=ButtonStyle.primary,
+                    custom_id="accueil"
+                ))
                 
                 await interaction.response.edit_message(
                     content=f"Exercices disponibles pour le cours **{cours_titre}** (niveau {niveau}):",
@@ -384,6 +448,12 @@ async def on_interaction(interaction):
             niveau_select.callback = niveau_select_callback
             view_niveau = View()
             view_niveau.add_item(niveau_select)
+            # Ajouter le bouton Accueil
+            view_niveau.add_item(Button(
+                label="🏠 Accueil",
+                style=ButtonStyle.primary,
+                custom_id="accueil"
+            ))
             
             await interaction.response.edit_message(
                 content=f"Vous avez sélectionné le cours: **{selected_course[1]}**\nChoisissez maintenant la difficulté:",
@@ -394,6 +464,12 @@ async def on_interaction(interaction):
         cours_select.callback = cours_select_callback
         view_cours = View()
         view_cours.add_item(cours_select)
+        # Ajouter le bouton Accueil
+        view_cours.add_item(Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        ))
         
         await interaction.response.send_message(
             "Choisissez un cours pour l'exercice:",
@@ -470,7 +546,14 @@ async def on_interaction(interaction):
             ),
             color=discord.Color.blue()
         )
-        await interaction.response.send_message(embed=embed)
+        # Ajouter le bouton Accueil à la vue
+        view = View()
+        view.add_item(Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        ))
+        await interaction.response.send_message(embed=embed, view=view)
 
 class SelectWithOptions(Select):
     def __init__(self, options, placeholder):
@@ -487,6 +570,12 @@ class SelectWithOptions(Select):
         options = [discord.SelectOption(label=n, value=n) for n in niveaux]
         view = View()
         view.add_item(NiveauSelect(options, thematique_id))
+        # Ajouter le bouton Accueil
+        view.add_item(Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        ))
         await interaction.response.edit_message(
             embed=discord.Embed(title=f"Thématique {thematique_id}", description="Choisissez un niveau :", color=0x00ff00),
             view=view
@@ -511,6 +600,12 @@ class NiveauSelect(Select):
             
         view = View()
         view.add_item(CoursSelect(cours_list))
+        # Ajouter le bouton Accueil
+        view.add_item(Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        ))
         await interaction.response.edit_message(
             embed=discord.Embed(title=f"Cours - {niveau}", color=0x00ff00),
             view=view
@@ -544,7 +639,6 @@ class CoursSelect(Select):
         if not chapitres:
             await interaction.response.send_message("❌ Cours sans chapitres disponibles.", ephemeral=True)
             return
-        
         
         # Récupérer la dernière progression de l'utilisateur pour ce cours
         last_chapitre_id = learn.get_last_progression(interaction.user.id, cours_id)
@@ -587,10 +681,8 @@ async def show_chapitre(interaction: discord.Interaction):
     chapitre = chapitres[index]
     chapitre_id = chapitre[0]
     
-    # Mettre à jour le chapitre dans la base (CORRECTION ICI)
+    # Mettre à jour le chapitre dans la base
     Users.update_suivi_chapitre(data["suivi_id"], chapitre_id)
-    
-
     
     # Récupération du média associé
     media_info = learn.get_media_for_chapitre(chapitre_id)
@@ -640,6 +732,14 @@ async def show_chapitre(interaction: discord.Interaction):
     )
     view.add_item(next_button)
     
+    # Ajouter le bouton Accueil
+    home_button = Button(
+        label="🏠 Accueil",
+        style=ButtonStyle.primary,
+        custom_id="accueil"
+    )
+    view.add_item(home_button)
+    
     # Vérification si c'est le dernier chapitre du cours
     last_chapitre_id = learn.get_last_chapitre_by_order(cours_id)
     is_last_chapter = (chapitre_id == last_chapitre_id)
@@ -648,7 +748,7 @@ async def show_chapitre(interaction: discord.Interaction):
     if is_last_chapter:
         if learn.is_course_completed(interaction.user.id, cours_id):
             status_btn = Button(
-                label="✅ Cours terminé",
+                label="✅ Cours déja terminé",
                 style=ButtonStyle.success,
                 disabled=True
             )
@@ -663,7 +763,78 @@ async def show_chapitre(interaction: discord.Interaction):
     
     # Envoi du message
     await interaction.response.edit_message(embed=embed, view=view)
+
+async def show_qcm_view_only(interaction: discord.Interaction):
+    data = bot.temp_data.get(interaction.user.id)
+    if not data or "qcms" not in data:
+        await interaction.response.send_message("❌ Session expirée.", ephemeral=True)
+        return
     
+    qcms = data["qcms"]
+    
+    # Récupérer les réponses de l'utilisateur depuis la base de données
+    user_answers = Users.get_qcm_answers(interaction.user.id, data["cours_id"])
+    
+    # Créer un embed pour chaque question du QCM
+    for i, qcm_item in enumerate(qcms):
+        embed = discord.Embed(
+            title=f"Question {i+1}/{len(qcms)}",
+            description=qcm_item['question'],
+            color=discord.Color.blue()
+        )
+        
+        # Ajouter les réponses possibles
+        options = [
+            qcm_item['reponse_1'], qcm_item['reponse_2'], qcm_item['reponse_3'],
+            qcm_item['reponse_4'], qcm_item['reponse_5'], qcm_item['reponse_6']
+        ]
+        
+        for j, option in enumerate(options, start=1):
+            if option:
+                # Vérifier si c'est la bonne réponse
+                is_correct = j == qcm_item['bonne_reponse']
+                # Vérifier si c'est la réponse de l'utilisateur
+                user_answered = user_answers.get(qcm_item['id']) == j
+                
+                # Formater l'affichage
+                prefix = "✅ " if is_correct else "❌ " if user_answered else "• "
+                if user_answered and not is_correct:
+                    prefix = "❌ "
+                elif user_answered and is_correct:
+                    prefix = "✅ "
+                
+                embed.add_field(
+                    name=f"{prefix}Option {j}",
+                    value=option,
+                    inline=False
+                )
+        
+        # Ajouter un champ pour indiquer la bonne réponse si l'utilisateur s'est trompé
+        if user_answers.get(qcm_item['id']) != qcm_item['bonne_reponse']:
+            correct_option = options[qcm_item['bonne_reponse'] - 1]
+            embed.add_field(
+                name="📝 Réponse correcte",
+                value=f"La bonne réponse était l'option {qcm_item['bonne_reponse']}: {correct_option}",
+                inline=False
+            )
+        
+        # Envoyer l'embed (seulement le premier en réponse, les autres en follow-up)
+        if i == 0:
+            await interaction.response.send_message(embed=embed)
+        else:
+            await interaction.followup.send(embed=embed)
+    
+    # Ajouter un bouton pour retourner à l'accueil
+    view = View()
+    home_button = Button(
+        label="🏠 Accueil",
+        style=ButtonStyle.primary,
+        custom_id="accueil"
+    )
+    view.add_item(home_button)
+    
+    await interaction.followup.send("Voici le QCM que vous avez passé. Les réponses correctes sont marquées avec ✅, vos réponses incorrectes avec ❌.", view=view)
+  
 async def start_qcm(interaction: discord.Interaction):
     data = bot.temp_data.get(interaction.user.id)
     if not data:
@@ -678,20 +849,20 @@ async def start_qcm(interaction: discord.Interaction):
         return
     
     # Enregistrer le début du QCM dans la base
-    suivi_id = Users.enregistrer_suivi(
-        discord_id=interaction.user.id,
-        type_activite='qcm',
-        cours_id=cours_id,
-        chapitre_id=data["chapitres"][-1][0],
-        etat='en_cours'
-    )
-    
-    bot.temp_data[interaction.user.id]["qcms"] = qcms
-    bot.temp_data[interaction.user.id]["qcm_index"] = 0
-    bot.temp_data[interaction.user.id]["qcm_answers"] = {}
-    bot.temp_data[interaction.user.id]["suivi_id"] = suivi_id
-    
-    await show_qcm(interaction)
+        suivi_id = Users.enregistrer_suivi(
+            discord_id=interaction.user.id,
+            type_activite='qcm',
+            cours_id=cours_id,
+            chapitre_id=data["chapitres"][-1][0],
+            etat='en_cours'
+        )
+        
+        bot.temp_data[interaction.user.id]["qcms"] = qcms
+        bot.temp_data[interaction.user.id]["qcm_index"] = 0
+        bot.temp_data[interaction.user.id]["qcm_answers"] = {}
+        bot.temp_data[interaction.user.id]["suivi_id"] = suivi_id
+        
+        await show_qcm(interaction)
 
 async def evaluate_qcm(interaction: discord.Interaction):
     data = bot.temp_data.get(interaction.user.id)
@@ -745,14 +916,15 @@ async def evaluate_qcm(interaction: discord.Interaction):
     # Créer la vue avec les boutons appropriés
     view = View()
     
-    if is_validated:
-        menu_button = Button(
-            label="🏠 Retour au menu",
-            style=ButtonStyle.primary,
-            custom_id="back_to_menu"
-        )
-        view.add_item(menu_button)
-    else:
+    # Ajouter le bouton Accueil
+    home_button = Button(
+        label="🏠 Accueil",
+        style=ButtonStyle.primary,
+        custom_id="accueil"
+    )
+    view.add_item(home_button)
+    
+    if not is_validated:
         retry_button = Button(
             label="🔄 Refaire un essai", 
             style=ButtonStyle.secondary, 
@@ -808,6 +980,14 @@ class QCMView(View):
             )
             submit_button.callback = self.submit_all
             self.add_item(submit_button)
+        
+        # Ajouter le bouton Accueil
+        home_button = Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        )
+        self.add_item(home_button)
 
     async def select_answer(self, interaction: discord.Interaction, answer_index: int):
         self.data["qcm_answers"][self.qcm_item["id"]] = answer_index
@@ -872,9 +1052,16 @@ class ReprendreTypeView(View):
             style=ButtonStyle.secondary, 
             custom_id="reprendre_exercice"
         ))
+        # Ajouter le bouton Accueil
+        self.add_item(Button(
+            label="🏠 Accueil",
+            style=ButtonStyle.primary,
+            custom_id="accueil"
+        ))
 
 # Gestion des cours
 @bot.tree.command(name="creer_cours", description="Crée un nouveau cours")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(titre="Titre du cours", thematique="Thématique du cours", niveau="Niveau du cours")
 @app_commands.choices(niveau=[
     app_commands.Choice(name="Débutant", value="débutant"),
@@ -890,6 +1077,7 @@ async def creer_cours(interaction: discord.Interaction, titre: str, thematique: 
         await interaction.response.send_message("❌ Erreur lors de la création du cours.")
 
 @bot.tree.command(name="modifier_cours", description="Modifie un cours existant")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(cours_id="ID du cours", titre="Nouveau titre du cours", thematique="Nouvelle thématique du cours", niveau="Nouveau niveau du cours")
 @app_commands.choices(niveau=[
     app_commands.Choice(name="Débutant", value="débutant"),
@@ -905,6 +1093,7 @@ async def modifier_cours(interaction: discord.Interaction, cours_id: int, titre:
         await interaction.response.send_message("❌ Erreur lors de la modification du cours.")
 
 @bot.tree.command(name="supprimer_cours", description="Supprime un cours existant")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(cours_id="ID du cours à supprimer")
 async def supprimer_cours(interaction: discord.Interaction, cours_id: int):
     if interaction.guild:
@@ -919,6 +1108,7 @@ async def supprimer_cours(interaction: discord.Interaction, cours_id: int):
 
 # Gestion des chapitres
 @bot.tree.command(name="ajouter_chapitre", description="Ajoute un chapitre avec un ordre spécifique")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(cours_id="ID du cours", titre="Titre du chapitre (max 250 caractères)", contenu="Contenu du chapitre", ordre="Position du chapitre (1, 2, 3...)")
 async def ajouter_chapitre(interaction: discord.Interaction, cours_id: int, titre: str, contenu: str, ordre: int):
     if ordre < 1:
@@ -931,6 +1121,7 @@ async def ajouter_chapitre(interaction: discord.Interaction, cours_id: int, titr
         await interaction.response.send_message("❌ Erreur : Ordre déjà utilisé ou problème SQL.")
 
 @bot.tree.command(name="modifier_chapitre", description="Modifie un chapitre existant")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(
     chapitre_id="ID du chapitre à modifier",
     nouveau_titre="Nouveau titre (optionnel)",
@@ -948,6 +1139,7 @@ async def modifier_chapitre(interaction: discord.Interaction, chapitre_id: int, 
         await interaction.response.send_message("❌ Erreur : ID invalide, ordre conflictuel ou données identiques.")
 
 @bot.tree.command(name="supprimer_chapitre", description="Supprime un chapitre par son ID")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(chapitre_id="ID numérique du chapitre à supprimer")
 async def supprimer_chapitre(interaction: discord.Interaction, chapitre_id: int):
     success = learn.suppr_chapitre(chapitre_id)
@@ -958,6 +1150,7 @@ async def supprimer_chapitre(interaction: discord.Interaction, chapitre_id: int)
 
 # Gestion des médias
 @bot.tree.command(name="pj_ajouter", description="Ajoute un média à la bibliothèque")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(
     type_pj="Type de pièce jointe",
     url="URL du média"
@@ -986,6 +1179,7 @@ async def ajouter_pj(interaction: discord.Interaction, type_pj: app_commands.Cho
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="pj_modifier", description="Modifie un média existant")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(
     media_id="ID du média à modifier",
     nouveau_type="Nouveau type (optionnel)",
@@ -1014,6 +1208,7 @@ async def modifier_pj(interaction: discord.Interaction, media_id: int, nouveau_t
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="pj_supprimer", description="Supprime un média de la bibliothèque")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(media_id="ID du média à supprimer")
 async def supprimer_pj(interaction: discord.Interaction, media_id: int):
     success = learn.delete_media(media_id)
@@ -1026,6 +1221,7 @@ async def supprimer_pj(interaction: discord.Interaction, media_id: int):
 
 # Liaison médias-chapitres
 @bot.tree.command(name="chapitre_ajouter_media", description="Lie un média existant à un chapitre")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(
     chapitre_id="ID du chapitre",
     media_id="ID du média à associer"
@@ -1040,6 +1236,7 @@ async def ajouter_media_chapitre(interaction: discord.Interaction, chapitre_id: 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="chapitre_modifier_media", description="Change le média associé à un chapitre")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(
     chapitre_id="ID du chapitre",
     nouveau_media_id="Nouvel ID de média"
@@ -1054,6 +1251,7 @@ async def modifier_media_chapitre(interaction: discord.Interaction, chapitre_id:
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="chapitre_supprimer_media", description="Supprime le média associé à un chapitre")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(chapitre_id="ID du chapitre")
 async def supprimer_media_chapitre(interaction: discord.Interaction, chapitre_id: int):
     success = learn.remove_media_from_chapitre(chapitre_id)
@@ -1066,6 +1264,7 @@ async def supprimer_media_chapitre(interaction: discord.Interaction, chapitre_id
 
 # Gestion des QCM
 @bot.tree.command(name="qcm_add", description="Ajoute un QCM à un cours")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(
     cours_id="ID du cours associé",
     question="Texte de la question",
@@ -1105,6 +1304,7 @@ async def qcm_add(
     )
 
 @bot.tree.command(name="qcm_delete", description="Supprime un QCM existant")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(qcm_id="ID du QCM à supprimer")
 async def qcm_delete(interaction: discord.Interaction, qcm_id: int):
     success = qcm.delete_qcm(qcm_id)
@@ -1113,6 +1313,7 @@ async def qcm_delete(interaction: discord.Interaction, qcm_id: int):
     )
 
 @bot.tree.command(name="qcm_modify", description="Modifie un QCM existant")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(
     qcm_id="ID du QCM à modifier",
     cours_id="Nouvel ID de cours associé (optionnel)",
@@ -1164,6 +1365,7 @@ async def qcm_modify(
 ex_group = app_commands.Group(name="ex", description="Commandes pour gérer les exercices")
 
 @ex_group.command(name="creer", description="Créer un nouvel exercice")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(
     cours_id="ID du cours associé",
     niveau="Niveau de l'exercice",
@@ -1188,8 +1390,10 @@ async def ex_creer(interaction: discord.Interaction,
         await interaction.response.send_message("✅ Exercice créé avec succès!", ephemeral=True)
     else:
         await interaction.response.send_message("❌ Échec de la création de l'exercice.", ephemeral=True)
+        
 
 @ex_group.command(name="supprimer", description="Supprimer un exercice")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(ex_id="ID de l'exercice à supprimer")
 async def ex_supprimer(interaction: discord.Interaction, ex_id: int):
     success = exercices.supprimer_exercice(ex_id)
@@ -1199,6 +1403,7 @@ async def ex_supprimer(interaction: discord.Interaction, ex_id: int):
         await interaction.response.send_message("❌ Échec de la suppression. ID invalide?", ephemeral=True)
 
 @ex_group.command(name="modifier", description="Modifier un exercice existant")
+@app_commands.default_permissions(administrator=True)
 @app_commands.describe(
     ex_id="ID de l'exercice à modifier",
     cours_id="Nouvel ID de cours (optionnel)",
@@ -1227,23 +1432,66 @@ async def ex_modifier(interaction: discord.Interaction,
     else:
         await interaction.response.send_message("❌ Échec de la modification. Vérifiez l'ID.", ephemeral=True)
 
-@bot.tree.command(name="vies", description="Voir vos vies restantes")
-async def vies(interaction: discord.Interaction):
-    account_type = Users.get_user_type(interaction.user.id)
-    if account_type == 'premium':
+@bot.tree.command(name="supr", description="Supprime un nombre spécifié de messages")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.describe(nombre="Nombre de messages à supprimer (max 100)")
+async def clear(interaction: discord.Interaction, nombre: int = 1):
+    """
+    Commande pour supprimer un nombre spécifié de messages dans le canal actuel.
+    Nécessite la permission de gestion des messages.
+    """
+    # Vérification que le nombre est valide
+    if nombre < 1 or nombre > 100:
         await interaction.response.send_message(
-            "🌟 Compte premium - Vies illimitées!",
+            "❌ Le nombre de messages à supprimer doit être entre 1 et 100.", 
             ephemeral=True
         )
-    else:
-        remaining = Users.get_remaining_vies(interaction.user.id)
+        return
+    
+    # Vérification des permissions
+    if not interaction.channel.permissions_for(interaction.user).manage_messages:
         await interaction.response.send_message(
-            f"Vous avez {remaining} vies restantes (rechargées toutes les 7 heures)",
+            "❌ Vous n'avez pas la permission de gérer les messages.", 
+            ephemeral=True
+        )
+        return
+        
+    if not interaction.channel.permissions_for(interaction.guild.me).manage_messages:
+        await interaction.response.send_message(
+            "❌ Je n'ai pas la permission de gérer les messages.", 
+            ephemeral=True
+        )
+        return
+    
+    # Répondre immédiatement pour éviter l'expiration de l'interaction
+    await interaction.response.defer(ephemeral=True)
+    
+    try:
+        # Supprimer les messages
+        deleted = await interaction.channel.purge(limit=nombre + 1)  # +1 pour inclure la commande
+        
+        # Envoyer un message de confirmation qui se supprime après 5 secondes
+        msg = await interaction.followup.send(
+            f"✅ {len(deleted) - 1} messages ont été supprimés.", 
+            ephemeral=True
+        )
+        
+        # Supprimer le message de confirmation après 5 secondes
+        await asyncio.sleep(5)
+        await msg.delete()
+        
+    except discord.Forbidden:
+        await interaction.followup.send(
+            "❌ Je n'ai pas les permissions nécessaires pour supprimer des messages.", 
+            ephemeral=True
+        )
+    except discord.HTTPException as e:
+        await interaction.followup.send(
+            f"❌ Une erreur s'est produite lors de la suppression des messages: {e}", 
             ephemeral=True
         )
 
 # Ajouter le groupe de commandes au bot
 bot.tree.add_command(ex_group)
-
 
 bot.run(DISCORD_TOKEN)
