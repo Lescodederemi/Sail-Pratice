@@ -1,7 +1,15 @@
 import os
 import imapclient
 import pyzmail
-from config import EMAIL, PASSWORD, IMAP_SERVER
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement
+load_dotenv()
+
+EMAIL = os.getenv('EMAIL')
+PASSWORD = os.getenv('PASSWORD')
+IMAP_SERVER = os.getenv('IMAP_SERVER')
+
 def traiter_email(email_body, email_num):
     # Recherche de la chaîne contenant 'ecmwf' ou 'gfs' et récupère les données associées
     if "ecmwf" in email_body:
