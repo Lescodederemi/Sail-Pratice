@@ -1,13 +1,10 @@
 import mysql.connector
-from config import SQL_host, Sql_User, Sql_mdp, Sql_name
+import os
+from dotenv import load_dotenv
+from config import DB_CONFIG 
 
 def get_connection():
-    return mysql.connector.connect(
-        host=SQL_host,
-        user=Sql_User,
-        password=Sql_mdp,
-        database=Sql_name
-    )
+    return mysql.connector.connect(**DB_CONFIG)
 
 def create_table():
     """Crée la table users avec la colonne type_compte"""
@@ -450,6 +447,3 @@ def is_course_completed(discord_id: int, cours_id: int):
         cursor.close()
         conn.close()
 
-
-# Initialisation
-create_table()
