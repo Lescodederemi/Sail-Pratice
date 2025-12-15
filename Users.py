@@ -5,7 +5,6 @@ from config import DB_CONFIG
 
 def get_connection():
     return mysql.connector.connect(**DB_CONFIG)
-
 def create_table():
     """Crée la table users avec la colonne type_compte"""
     conn = get_connection()
@@ -138,6 +137,7 @@ def enregistrer_suivi(discord_id: int, type_activite: str,
     finally:
         cursor.close()
         conn.close()
+
 def get_derniere_activite(discord_id: int, type_activite: str = None):
     """Récupère la dernière activité par type"""
     conn = get_connection()
@@ -447,3 +447,30 @@ def is_course_completed(discord_id: int, cours_id: int):
         cursor.close()
         conn.close()
 
+def create_suivi_table():
+    """Crée la table suivi si elle n'existe pas"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS suivi (
+                suivi_id INT AUTO_INCREMENT PRIMARY KEY,
+                discord_id BIGINT NOT NULL,
+                type_activite ENUM('learn', 'exercice', 'qcm') NOT NULL,
+                etat ENUM('en_cours', 'termine', 'echoue') NOT NULL DEFAULT 'en_cours',
+                cours_id INT,
+                chapitre_id INT,
+                qcm_id INT,
+                exercice_id INT,
+                score INT,
+                date_activite TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (discord_id) REFERENCES users(discord_id)
+            )
+        """)
+        conn.commit()
+        print("✅ Table suivi créée ou déjà existante")
+    except Exception as e:
+        print(f"❌ Erreur création table suivi: {e}")
+    finally:
+        cursor.close()
+        conn.close()

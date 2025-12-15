@@ -9,6 +9,9 @@ from config import DB_CONFIG
 
 def get_connection():
     return mysql.connector.connect(**DB_CONFIG)
+
+
+
 def ajouter_cours(titre, thematique, niveau):
     connection = get_connection()
     cursor = connection.cursor()
@@ -536,6 +539,22 @@ def get_all_cours():
     except Exception as e:
         print(f"Erreur lors de la récupération des cours: {e}")
         return []
+    finally:
+        cursor.close()
+        connection.close()
+
+
+
+def get_media_by_id(media_id: int) -> dict:
+    """Récupère un média par son ID"""
+    connection = get_connection()
+    cursor = connection.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT * FROM media WHERE media_id = %s", (media_id,))
+        return cursor.fetchone()
+    except Exception as e:
+        print(f"Erreur get_media_by_id: {e}")
+        return None
     finally:
         cursor.close()
         connection.close()

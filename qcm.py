@@ -179,3 +179,48 @@ def save_qcm_result(user_id: int, cours_id: int, score: int):
     finally:
         cursor.close()
         connection.close()
+
+# Ajouter ces fonctions à la fin du fichier qcm.py
+
+def link_media_to_qcm(qcm_id: int, media_id: int) -> bool:
+    """Lie un média à un QCM"""
+    conn = connect_db()
+    if conn is None:
+        return False
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE qcm SET media_id = %s WHERE id = %s",
+            (media_id, qcm_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Erreur lors de la liaison du média au QCM: {e}")
+        return False
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
+
+def get_media_for_qcm(qcm_id: int) -> dict:
+    """Récupère le média lié à un QCM"""
+    conn = connect_db()
+    if not conn:
+        return None
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
+            SELECT m.url, m.type 
+            FROM media m
+            JOIN qcm q ON q.media_id = m.media_id
+            WHERE q.id = %s
+        """, (qcm_id,))
+        return cursor.fetchone()
+    except Exception as e:
+        print(f"Erreur get_media_for_qcm: {e}")
+        return None
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
