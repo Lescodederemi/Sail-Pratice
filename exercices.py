@@ -180,3 +180,47 @@ def get_exercices_by_cours_and_niveau(cours_id, niveau):
     cursor.close()
     conn.close()
     return exercices
+
+# Ajouter ces fonctions à la fin du fichier exercices.py
+
+def link_media_to_exercice(exercice_id: int, media_id: int) -> bool:
+    """Lie un média à un exercice"""
+    conn = create_connection()
+    if conn is None:
+        return False
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE exercices SET media_id = %s WHERE ex_id = %s",
+            (media_id, exercice_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except mysql.connector.Error as e:
+        print(f"Erreur lors de la liaison du média à l'exercice: {e}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+def get_media_for_exercice(exercice_id: int) -> dict:
+    """Récupère le média lié à un exercice"""
+    conn = create_connection()
+    if not conn:
+        return None
+    
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT m.url, m.type 
+            FROM media m
+            JOIN exercices e ON e.media_id = m.media_id
+            WHERE e.ex_id = %s
+        """, (exercice_id,))
+        return cursor.fetchone()
+    except Exception as e:
+        print(f"Erreur get_media_for_exercice: {e}")
+        return None
+    finally:
+        if conn: 
+            conn.close()
